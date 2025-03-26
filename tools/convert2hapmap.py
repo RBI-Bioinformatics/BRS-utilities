@@ -7,6 +7,7 @@ def convert_agriplex_to_hapmap(input_file, output_file):
     df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], header=None)
 
     # IUPAC encoding dictionary
+    global iupac_dict 
     iupac_dict = {
         "A / T": "W", "T / A": "W",
         "C / ": "S", "G / C": "S",
@@ -43,6 +44,9 @@ def convert_agriplex_to_hapmap(input_file, output_file):
     # Prepare the HapMap data
     hapmap_rows = []
     dropped_markers = []
+    # add UN as chromosome (unknown+counter, example: Unknown1, Unknown2,...)
+    # add Pos1 as pos(Pos+ counter, example: Pos1, Pos2, Pos3)
+    count = 1
     for i, marker in enumerate(snp_markers):
         try:
             alt_snp_names_tokenized = alt_snp_names[i].split("_")
@@ -63,7 +67,8 @@ def convert_agriplex_to_hapmap(input_file, output_file):
             elif marker.startswith('chr'):
                 chrom, pos = marker.split("_")[0][3:], marker.split("_")[1]  # Extract chromosome and position
             else:
-                chrom, pos = "NA", "NA"  # if chromosome and position not specified
+                chrom, pos = 999, int(count)  # if chromosome and position not specified
+                count += 1
         except IndexError:
             chrom, pos = "NA", "NA"  # if chromosome and position not specified
         
@@ -81,10 +86,11 @@ def convert_agriplex_to_hapmap(input_file, output_file):
             iupac_genotypes.append(iupac_allele)
 
         row = [
-            alt_snp_names[i], alleles, chrom.lstrip("0"), pos, "+", "NA", "NA", "NA", "NA", "NA", "NA"
+            alt_snp_names[i], alleles, int(chrom), int(pos), "+", "NA", "NA", "NA", "NA", "NA", "NA"
         #] + list(genotype_data[:, i])
         ] + iupac_genotypes
         hapmap_rows.append(row)
+        
     
     # Create DataFrames
     hapmap_df = pd.DataFrame(hapmap_rows, columns=hapmap_headers)
@@ -102,14 +108,63 @@ def convert_agriplex_to_hapmap(input_file, output_file):
     #print(f"Dropped markers file saved to: dropped_markers.tsv")
 
 
-def convert_dart_to_hapmap(input_file, output_file):
-    # Load spreadsheet file/csv file
-    data = pd.read_csv(input_file, sep = ",", header = 1)
-    data_transposed = data.transpose()
+def create_snptable_dictionary(snptable_file):
+    global snptable
+    # Read the file and create dictionary
+    # keys are made lowercase
+    with open(snptable_file, 'r') as file:
+        snptable = {key.lower(): value for key, value in (line.strip().split(',', 1) for line in file)}
 
-    data_transposed.to_csv(output_file, sep="\t", index=False)
-    print(f"HapMap file saved to: {output_file}")
-    #print("DaRT Input")
+
+def convert_dart_to_hapmap(input_file,  output_file):
+    # Read the CSV file
+    df = pd.read_csv(input_file)
+
+    # Extract metadata and SNP data
+    # Columns will not change
+    plate_name = df.iloc[:, 0].astype(str)  
+    well = df.iloc[:, 1].astype(str)  
+    subject_id = df.iloc[:, 2].astype(str)  
+    snp_data = df.iloc[:, 3:] 
+
+    # Concatenate sample names and metadata for unique identifiers
+    #sample_ids = plate_name + "_" + well + "_" + subject_id
+    sample_ids = subject_id
+
+    # Extract SNP marker names from column headers
+    marker_names = snp_data.columns.tolist()
+
+    # Prepare HapMap format columns with the usual Hapmap headers
+    # If data has strand and assembly/reference genome info, specify.
+    hapmap_headers = ["rs#", "alleles", "chrom", "pos","strand", "assembly#", "center",
+        "protLSID", "assayLSID", "panelLSID", "QCcode"] + sample_ids.tolist()
+    
+    # Initialize HapMap formatted data
+    hapmap_rows = []
+    for i, marker in enumerate(marker_names):
+        try:
+            # get the marker from the snp table dictionary
+            # marker names are changed to lowercase to compare to snptable[key]
+            val = snptable.get(marker.lower())
+            if val is not None:
+                chrom, pos = val.split(',')[2], val.split(',')[3]
+                alleles = val.split(',')[4]+ "/"+ (val.split(',')[5])
+            else:
+                alleles, chrom, pos = "N/N", "999", "NA"
+        except IndexError:
+            alleles, chrom, pos = "N/N", "999", "NA"  # if chromosome and position not specified
+
+        # Get genotype calls for this marker
+        genotypes = snp_data[marker].replace({".:.": "N/N", "-:-": "N/N"}).tolist()
+        # Format the row
+        hapmap_rows.append([marker, alleles, chrom, pos, "+", "NA", "NA", "NA", "NA", "NA", "NA"] + genotypes)
+
+    # Create a DataFrame for HapMap output
+    hapmap_df = pd.DataFrame(hapmap_rows, columns=hapmap_headers)
+
+    # Save to file (tab-delimited)
+    hapmap_df.to_csv(output_file, sep="\t", index=False)
+    print(f"HapMap file saved as {output_file}")
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
@@ -119,6 +174,7 @@ if __name__ == "__main__":
             #print("1KRiCA Input")
             convert_agriplex_to_hapmap(sys.argv[2], sys.argv[3])
         elif sys.argv[1] == "2":
+            create_snptable_dictionary("DArTSNPs_v4.2.csv")
             convert_dart_to_hapmap(sys.argv[2], sys.argv[3])
         else:
             print("Usage: python3 convert2hapmap.py <input_type: 1- 1kRiCA, 2- DaRT> <input_excel_file> <output_tsv_file>")
