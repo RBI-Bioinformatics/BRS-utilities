@@ -160,21 +160,19 @@ def convert_dart_to_hapmap(input_file,  output_file):
         hapmap_rows.append([marker, alleles, chrom, pos, "+", "NA", "NA", "NA", "NA", "NA", "NA"] + genotypes)
 
     # Create a DataFrame for HapMap output
-    hapmap_df = pd.DataFrame(hapmap_rows, columns=hapmap_headers)
-
     # Save to file (tab-delimited)
+    hapmap_df = pd.DataFrame(hapmap_rows, columns=hapmap_headers)
     hapmap_df.to_csv(output_file, sep="\t", index=False)
     print(f"HapMap file saved as {output_file}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python3 convert2hapmap.py <input_type: 1- 1kRiCA, 2- DaRT> <input_excel_file> <output_tsv_file>")
+    if len(sys.argv) != 5:
+        print("Usage: python3 convert2hapmap.py <input_type: 1- 1kRiCA, 2- DaRT> <snptable_file> <input_excel_file> <output_tsv_file>")
     else:
+        create_snptable_dictionary(sys.argv[2])
         if sys.argv[1] == "1":
-            #print("1KRiCA Input")
-            convert_agriplex_to_hapmap(sys.argv[2], sys.argv[3])
+            convert_agriplex_to_hapmap(sys.argv[3], sys.argv[4])
         elif sys.argv[1] == "2":
-            create_snptable_dictionary("DArTSNPs_v4.2.csv")
-            convert_dart_to_hapmap(sys.argv[2], sys.argv[3])
+            convert_dart_to_hapmap( sys.argv[3], sys.argv[4])
         else:
-            print("Usage: python3 convert2hapmap.py <input_type: 1- 1kRiCA, 2- DaRT> <input_excel_file> <output_tsv_file>")
+            print("Usage: python3 convert2hapmap.py <input_type: 1- 1kRiCA, 2- DaRT> <snptable_file> <input_excel_file> <output_tsv_file>")
