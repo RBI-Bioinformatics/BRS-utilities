@@ -1,20 +1,30 @@
 import pandas as pd
 import sys
 
+def check_marker_snptable(marker,none_count):
+    marker_info = snptable.get(marker.lower())
+    if marker_info is not None:
+        chrom,pos = marker_info.split(",")[2], marker_info.split(",")[3]
+        alleles = marker_info.split(",")[4] + "/" + marker_info.split(",")[5]
+    else:
+        alleles, chrom, pos = "N/N", 999, none_count  # if chromosome and position not specified
+    
+    return(alleles, chrom, pos)
+
 def convert_agriplex_to_hapmap(input_file, output_file):
     # Load the Excel file
     xls = pd.ExcelFile(input_file)
     df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], header=None)
 
     # IUPAC encoding dictionary
-    global iupac_dict 
+    global iupac_dict
     iupac_dict = {
-        "A / T": "W", "T / A": "W",
-        "C / ": "S", "G / C": "S",
-        "A / C": "M", "C / A": "M",
-        "G / T": "K", "T / G": "K",
-        "A / G": "R", "G / A": "R",
-        "C / T": "Y", "T / C": "Y",
+        "A/T": "W", "T/A": "W",
+        "C/G": "S", "G/C": "S",
+        "A/C": "M", "C/A": "M",
+        "G/T": "K", "T/G": "K",
+        "A/G": "R", "G/A": "R",
+        "C/T": "Y", "T/C": "Y",
         "A": "A", "C": "C", "G" : "G", "T": "T",
         "--": "-", "FAIL": "N", "NN": "N"  # Handle missing data
     }
@@ -43,69 +53,33 @@ def convert_agriplex_to_hapmap(input_file, output_file):
 
     # Prepare the HapMap data
     hapmap_rows = []
-    dropped_markers = []
-    # add UN as chromosome (unknown+counter, example: Unknown1, Unknown2,...)
-    # add Pos1 as pos(Pos+ counter, example: Pos1, Pos2, Pos3)
+
+    # add 999 if chromosome unknown(
+    # add counter if pos unknown(Pos+ counter, example: 1, 2, 3,...,n)
     count = 1
-    for i, marker in enumerate(snp_markers):
+    for i, marker in enumerate(alt_snp_names):
         try:
-            alt_snp_names_tokenized = alt_snp_names[i].split("_")
-            # Formats:
-            #   starts with chr: chrom#_pos#
-            #   starts with IRGSP1: IRRI_SNP#_IRGSP1_C#_pos#
-            #   starts with MSU7: IRRI_SNP#_MSU7_Chrom#_pos#_ref-alt
-            #   only QTL names: IRRI_SNP#_QTLname_meta
-
-            if marker.startswith('IRGSP1'):
-                chrom = alt_snp_names_tokenized[3]
-                if chrom.startswith('C'):
-                    chrom = chrom.replace('C','')
-                pos = alt_snp_names_tokenized[4]
-            elif marker.startswith('MSU7'):
-                chrom = alt_snp_names_tokenized[3]
-                pos = alt_snp_names_tokenized[4]
-            elif marker.startswith('chr'):
-                chrom, pos = marker.split("_")[0][3:], marker.split("_")[1]  # Extract chromosome and position
-            else:
-                chrom, pos = 999, int(count)  # if chromosome and position not specified
-                count += 1
+            alleles, chrom, pos = check_marker_snptable(marker, count)
+            count += 1
         except IndexError:
-            chrom, pos = "NA", "NA"  # if chromosome and position not specified
-        
-        alleles = f"{ref_alleles[i]}/{alt_alleles[i]}"
-
-        # Drop multi-allelic and indel sites (only keep single A/T/C/G alleles)
-        if len(ref_alleles[i]) > 1 or len(alt_alleles[i]) > 1:
-            dropped_markers.append(marker)
-            continue  # Skip this marker
+            # if chromosome and position not specified
+            alleles, chrom, pos = "N/N", 999, int(count)  
 
         # Convert genotype data to IUPAC format
         iupac_genotypes = []
         for allele in genotype_data[:, i]:
-            iupac_allele = iupac_dict.get(allele, "N")  # Default to 'N' if not found
+            iupac_allele = iupac_dict.get(allele.replace(" ", ""), allele)  # Default to allele if not found
             iupac_genotypes.append(iupac_allele)
 
         row = [
-            alt_snp_names[i], alleles, int(chrom), int(pos), "+", "NA", "NA", "NA", "NA", "NA", "NA"
-        #] + list(genotype_data[:, i])
+            alt_snp_names[i], alleles, chrom, pos, "+", "NA", "NA", "NA", "NA", "NA", "NA"
         ] + iupac_genotypes
         hapmap_rows.append(row)
         
-    
-    # Create DataFrames
+    # output dataframe
     hapmap_df = pd.DataFrame(hapmap_rows, columns=hapmap_headers)
-    filtered_df = hapmap_df[~(hapmap_df['chrom'] == 'NA') & ~(hapmap_df['pos'] == 'NA')]
-    
-    # Save as TSV file
-    filtered_file = output_file + '.filtered'
-    hapmap_df.to_csv(output_file, sep="\t", index=False)      # all bi-allelic
-    filtered_df.to_csv(filtered_file, sep="\t", index=False)    # all non-NA chromosome
+    hapmap_df.to_csv(output_file, sep="\t", index=False)
     print(f"HapMap file saved to: {output_file}")
-
-    # Output Dropped Markers
-    #dropped_markers_df = pd.DataFrame(dropped_markers)
-    #dropped_markers_df.to_csv("dropped_markers.tsv", sep="\t", index=False)
-    #print(f"Dropped markers file saved to: dropped_markers.tsv")
 
 
 def create_snptable_dictionary(snptable_file):
@@ -121,7 +95,7 @@ def convert_dart_to_hapmap(input_file,  output_file):
     df = pd.read_csv(input_file)
 
     # Extract metadata and SNP data
-    # Columns will not change
+    # Columns as is
     plate_name = df.iloc[:, 0].astype(str)  
     well = df.iloc[:, 1].astype(str)  
     subject_id = df.iloc[:, 2].astype(str)  
@@ -141,21 +115,17 @@ def convert_dart_to_hapmap(input_file,  output_file):
     
     # Initialize HapMap formatted data
     hapmap_rows = []
+    count = 1
     for i, marker in enumerate(marker_names):
         try:
-            # get the marker from the snp table dictionary
-            # marker names are changed to lowercase to compare to snptable[key]
-            val = snptable.get(marker.lower())
-            if val is not None:
-                chrom, pos = val.split(',')[2], val.split(',')[3]
-                alleles = val.split(',')[4]+ "/"+ (val.split(',')[5])
-            else:
-                alleles, chrom, pos = "N/N", "999", "NA"
+            alleles, chrom, pos = check_marker_snptable(marker, count)
+            count +=1
         except IndexError:
-            alleles, chrom, pos = "N/N", "999", "NA"  # if chromosome and position not specified
+            alleles, chrom, pos = "N/N", "999", int(count)  # if chromosome and position not specified
 
         # Get genotype calls for this marker
         genotypes = snp_data[marker].replace({".:.": "N/N", "-:-": "N/N"}).tolist()
+    
         # Format the row
         hapmap_rows.append([marker, alleles, chrom, pos, "+", "NA", "NA", "NA", "NA", "NA", "NA"] + genotypes)
 
@@ -169,6 +139,7 @@ if __name__ == "__main__":
     if len(sys.argv) != 5:
         print("Usage: python3 convert2hapmap.py <input_type: 1- 1kRiCA, 2- DaRT> <snptable_file> <input_excel_file> <output_tsv_file>")
     else:
+        # create snp table
         create_snptable_dictionary(sys.argv[2])
         if sys.argv[1] == "1":
             convert_agriplex_to_hapmap(sys.argv[3], sys.argv[4])
