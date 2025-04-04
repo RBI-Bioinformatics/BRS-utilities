@@ -1,6 +1,10 @@
 import pandas as pd
 import sys
 
+# To-Do:
+# check column headers especially [pos] and [chrom]
+# add try-catch for errors
+
 def filter_BiAllelic_from_Hapmap(input_file, output_file):
     # read the tab-delimited file
     # Hapmap delimiter is '\t'
