@@ -61,5 +61,5 @@ if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python3 filterBiAllelicHapmap.py <hapmap_file> <filtered_file>")
     else:
-        change_to_iupac(sys.argv[1], sys.argv[1])
+        #change_to_iupac(sys.argv[1], sys.argv[1])
         filter_BiAllelic_from_Hapmap(sys.argv[1], sys.argv[2])

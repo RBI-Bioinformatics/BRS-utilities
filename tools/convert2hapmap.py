@@ -17,7 +17,6 @@ def convert_agriplex_to_hapmap(input_file, output_file):
     df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], header=None)
 
     # IUPAC encoding dictionary
-    global iupac_dict
     iupac_dict = {
         "A/T": "W", "T/A": "W",
         "C/G": "S", "G/C": "S",
@@ -91,6 +90,17 @@ def create_snptable_dictionary(snptable_file):
 
 
 def convert_dart_to_hapmap(input_file,  output_file):
+    iupac_dict = {
+        "A/T": "W", "T/A": "W",
+        "C/G": "S", "G/C": "S",
+        "A/C": "M", "C/A": "M",
+        "G/T": "K", "T/G": "K",
+        "A/G": "R", "G/A": "R",
+        "C/T": "Y", "T/C": "Y",
+        "A/A": "A", "C/C": "C", "G/G" : "G", "T/T": "T",
+        "-/-": "-", "FAIL": "N", "N/N": "N"  # Handle missing data
+    }
+
     # Read the CSV file
     df = pd.read_csv(input_file)
 
@@ -124,10 +134,16 @@ def convert_dart_to_hapmap(input_file,  output_file):
             alleles, chrom, pos = "N/N", "999", int(count)  # if chromosome and position not specified
 
         # Get genotype calls for this marker
+        # List of all genotype observation per marker
         genotypes = snp_data[marker].replace({".:.": "N/N", "-:-": "N/N"}).tolist()
-    
+        #print(len(genotypes))
+        #print(type(genotypes))
+        
+        # Replace elements using dictionary
+        iupac_genotypes = [iupac_dict.get(allele, allele) for allele in genotypes]
+
         # Format the row
-        hapmap_rows.append([marker, alleles, chrom, pos, "+", "NA", "NA", "NA", "NA", "NA", "NA"] + genotypes)
+        hapmap_rows.append([marker, alleles, chrom, pos, "+", "NA", "NA", "NA", "NA", "NA", "NA"] + iupac_genotypes)
 
     # Create a DataFrame for HapMap output
     # Save to file (tab-delimited)
